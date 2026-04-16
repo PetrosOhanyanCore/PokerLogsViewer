@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <RootNamespace>PokerLogsViewer</RootNamespace>
+    <AssemblyName>PokerLogsViewer</AssemblyName>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>disable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <Platforms>AnyCPU</Platforms>
+  </PropertyGroup>
+
+</Project>
