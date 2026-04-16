@@ -65,8 +65,12 @@
             <!-- LEFT: Tables -->
             <DockPanel Grid.Column="0">
                 <TextBlock Text="Tables" Style="{StaticResource PanelHeader}" DockPanel.Dock="Top"/>
+                <TextBox DockPanel.Dock="Top"
+                         Margin="0,0,0,6"
+                         Text="{Binding TableFilterText, UpdateSourceTrigger=PropertyChanged}"
+                         ToolTip="Filter by table name"/>
                 <Grid>
-                    <ListBox ItemsSource="{Binding Tables}"
+                    <ListBox ItemsSource="{Binding FilteredTables}"
                              SelectedItem="{Binding SelectedTable}"
                              DisplayMemberPath="TableName"/>
                     <TextBlock Text="No data. Click 'Начать сканирование'.">
@@ -90,8 +94,12 @@
             <!-- MIDDLE: Hand IDs -->
             <DockPanel Grid.Column="2">
                 <TextBlock Text="Hand IDs" Style="{StaticResource PanelHeader}" DockPanel.Dock="Top"/>
+                <TextBox DockPanel.Dock="Top"
+                         Margin="0,0,0,6"
+                         Text="{Binding HandFilterText, UpdateSourceTrigger=PropertyChanged}"
+                         ToolTip="Filter by Hand ID"/>
                 <Grid>
-                    <ListBox ItemsSource="{Binding SelectedTable.Hands}"
+                    <ListBox ItemsSource="{Binding FilteredHands}"
                              SelectedItem="{Binding SelectedHand}"
                              DisplayMemberPath="HandID"/>
                     <TextBlock Text="Select a table">

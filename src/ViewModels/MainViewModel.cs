@@ -1,11 +1,13 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Windows;
+using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Threading;
 using PokerLogsViewer.Models;
@@ -35,6 +37,13 @@ namespace PokerLogsViewer.ViewModels
         private StatusKind _statusKind = StatusKind.Idle;
         private TableGroupViewModel _selectedTable;
         private PokerHand _selectedHand;
+        private string _tableFilterText;
+        private string _handFilterText;
+
+        private readonly ICollectionView _filteredTables;
+        private ICollectionView _filteredHands;
+
+        private static readonly ObservableCollection<PokerHand> EmptyHands = new ObservableCollection<PokerHand>();
 
         public ObservableCollection<TableGroupViewModel> Tables { get; }
             = new ObservableCollection<TableGroupViewModel>();
@@ -48,6 +57,29 @@ namespace PokerLogsViewer.ViewModels
                     ((RelayCommand)ScanCommand).RaiseCanExecuteChanged();
             }
         }
+
+        public string TableFilterText
+        {
+            get => _tableFilterText;
+            set
+            {
+                if (!SetProperty(ref _tableFilterText, value)) return;
+                _filteredTables.Refresh();
+            }
+        }
+
+        public string HandFilterText
+        {
+            get => _handFilterText;
+            set
+            {
+                if (!SetProperty(ref _handFilterText, value)) return;
+                _filteredHands?.Refresh();
+            }
+        }
+
+        public ICollectionView FilteredTables => _filteredTables;
+        public ICollectionView FilteredHands => _filteredHands;
 
         public string Status
         {
@@ -82,7 +114,10 @@ namespace PokerLogsViewer.ViewModels
             set
             {
                 if (SetProperty(ref _selectedTable, value))
+                {
                     SelectedHand = null; // reset detail panel
+                    RebuildHandsView();
+                }
             }
         }
 
@@ -107,6 +142,11 @@ namespace PokerLogsViewer.ViewModels
                 _ => !IsScanning
                      && !string.IsNullOrWhiteSpace(FolderPath)
                      && Directory.Exists(FolderPath));
+
+            _filteredTables = CollectionViewSource.GetDefaultView(Tables);
+            _filteredTables.Filter = FilterTable;
+
+            RebuildHandsView();
         }
 
         // ---------------------------------------------------------------------
@@ -259,6 +299,41 @@ namespace PokerLogsViewer.ViewModels
                     group.Hands.Add(h);
                 Tables.Add(group);
             }
+
+            _filteredTables.Refresh();
+            _filteredHands?.Refresh();
+        }
+
+        private bool FilterTable(object item)
+        {
+            if (item is not TableGroupViewModel table)
+                return false;
+
+            if (string.IsNullOrWhiteSpace(TableFilterText))
+                return true;
+
+            return table.TableName?.IndexOf(TableFilterText, StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private bool FilterHand(object item)
+        {
+            if (item is not PokerHand hand)
+                return false;
+
+            if (string.IsNullOrWhiteSpace(HandFilterText))
+                return true;
+
+            var handIdText = hand.HandID.ToString();
+            return handIdText.IndexOf(HandFilterText, StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private void RebuildHandsView()
+        {
+            var source = (IEnumerable<PokerHand>)(SelectedTable?.Hands ?? EmptyHands);
+            _filteredHands = CollectionViewSource.GetDefaultView(source);
+            _filteredHands.Filter = FilterHand;
+            _filteredHands.Refresh();
+            OnPropertyChanged(nameof(FilteredHands));
         }
 
         // ---------------------------------------------------------------------
