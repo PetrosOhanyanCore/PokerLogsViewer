@@ -7,10 +7,8 @@ namespace PokerLogsViewer.Services
 {
     public sealed class FileScanner : IFileScanner
     {
-        // Accept both the canonical extension and the common "Notepad on Windows"
-        // artifact where 'foo.json' is saved as 'foo.json.txt'.
         private static readonly string[] AcceptedExtensions =
-        {
+  {
             ".json",
             ".json.txt"
         };
@@ -31,9 +29,6 @@ namespace PokerLogsViewer.Services
 
             try
             {
-                // Enumerate once with a broad pattern, filter by predicate below.
-                // Avoids .NET's legacy 8.3 filename quirk that can make "*.json"
-                // match unexpected names.
                 allFiles = Directory.GetFiles(path, "*", SearchOption.TopDirectoryOnly);
             }
             catch (Exception ex)

@@ -5,8 +5,6 @@ using System.Threading;
 
 namespace PokerLogsViewer.Services
 {
-    // Simple runtime localization provider. Not a full RESX solution, but adequate
-    // for toggling RU/EN in the UI at runtime for this sample.
     public sealed class LocalizationManager : INotifyPropertyChanged
     {
         public static LocalizationManager Instance { get; } = new LocalizationManager();
@@ -74,9 +72,9 @@ namespace PokerLogsViewer.Services
                     ["SelectHandPlaceholder"] = "\u0412\u044B\u0431\u0435\u0440\u0438\u0442\u0435 \u0440\u0430\u0437\u0434\u0430\u0447\u0443 \u0434\u043B\u044F \u043F\u0440\u043E\u0441\u043C\u043E\u0442\u0440\u0430"
                 }
                 ,
-                ["meta"] = new Dictionary<string, string>() // placeholder to keep later edits simple
+                ["meta"] = new Dictionary<string, string>()
                 {
-                    // (no runtime entries) 
+                    
                 }
             };
         }

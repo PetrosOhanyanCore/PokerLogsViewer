@@ -2,10 +2,6 @@ using System.Collections.Generic;
 
 namespace PokerLogsViewer.Models
 {
-    /// <summary>
-    /// POCO for a single poker hand record. Populated by System.Text.Json
-    /// with case-insensitive property matching.
-    /// </summary>
     public class PokerHand
     {
         public long HandID { get; set; }

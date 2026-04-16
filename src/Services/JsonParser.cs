@@ -27,7 +27,6 @@ namespace PokerLogsViewer.Services
                 var trimmed = text.TrimStart();
                 if (trimmed.Length == 0) return null;
 
-                // Files may be either a single object or an array of objects.
                 if (trimmed[0] == '[')
                     return JsonSerializer.Deserialize<List<PokerHand>>(text, _options);
 

@@ -11,7 +11,6 @@ namespace PokerLogsViewer
         {
             base.OnStartup(e);
 
-            // Manual DI — single place that knows concrete types.
             IFileScanner scanner = new FileScanner();
             IJsonParser  parser  = new JsonParser();
             var vm               = new MainViewModel(scanner, parser);

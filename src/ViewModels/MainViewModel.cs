@@ -87,9 +87,6 @@ namespace PokerLogsViewer.ViewModels
             set => SetProperty(ref _status, value);
         }
 
-        /// <summary>
-        /// Drives the status-bar text color via DataTriggers in XAML.
-        /// </summary>
         public StatusKind StatusKind
         {
             get => _statusKind;
@@ -115,7 +112,7 @@ namespace PokerLogsViewer.ViewModels
             {
                 if (SetProperty(ref _selectedTable, value))
                 {
-                    SelectedHand = null; // reset detail panel
+                    SelectedHand = null;
                     RebuildHandsView();
                 }
             }
@@ -148,14 +145,10 @@ namespace PokerLogsViewer.ViewModels
 
             RebuildHandsView();
 
-            // Initialize status text from localization
-            // Use keyed status so it updates when language changes
             SetStatusKey("Status_SelectFolder");
 
-            // Recompute status when localization changes
             LocalizationManager.Instance.PropertyChanged += (_, __) =>
             {
-                // Re-evaluate current keyed status on UI thread
                 _dispatcher.BeginInvoke(new Action(() => UpdateStatusFromKey()));
             };
         }
@@ -187,15 +180,11 @@ namespace PokerLogsViewer.ViewModels
             }
             catch (FormatException)
             {
-                // Fallback to raw format if localization format is invalid
                 Status = fmt;
             }
         }
 
-        // ---------------------------------------------------------------------
         // UI-thread methods
-        // ---------------------------------------------------------------------
-
         private void Browse()
         {
             using (var dlg = new System.Windows.Forms.FolderBrowserDialog
@@ -239,9 +228,7 @@ namespace PokerLogsViewer.ViewModels
             _scanThread.Start();
         }
 
-        // ---------------------------------------------------------------------
         // Background-thread work
-        // ---------------------------------------------------------------------
 
         /// <summary>
         /// Runs on <see cref="_scanThread"/>. MUST NOT touch ObservableCollections
@@ -254,7 +241,6 @@ namespace PokerLogsViewer.ViewModels
             {
                 var grouped = BuildGroupedHands(rootPath, reportProgress: true, out int processed, out int failed);
 
-                // 3. Hand off to the UI thread in a single batched update.
                 _dispatcher.Invoke(new Action(() =>
                 {
                     ApplyTables(grouped);
@@ -380,9 +366,7 @@ namespace PokerLogsViewer.ViewModels
             OnPropertyChanged(nameof(FilteredHands));
         }
 
-        // ---------------------------------------------------------------------
         // Auto-refresh via FileSystemWatcher
-        // ---------------------------------------------------------------------
 
         private void ConfigureWatcher(string rootPath)
         {
@@ -523,19 +507,18 @@ namespace PokerLogsViewer.ViewModels
             }
         }
 
-        /// <summary>Non-blocking status push from the worker thread.</summary>
+        /// <summary>
+        /// Non-blocking status push from the worker thread.
+        /// </summary>
         private void PostStatus(string text)
         {
-            // Use Normal priority (same as the terminal Dispatcher.Invoke) so FIFO
-            // order is preserved. With Background priority, a late-arriving
-            // "Scanning..." could fire AFTER "Done" and overwrite it.
             _dispatcher.BeginInvoke(
                 DispatcherPriority.Normal,
                 new Action(() =>
                 {
-                    // Ignore stale progress updates once scan has ended.
-                    if (!IsScanning) return;
-                    // Do not clear the keyed status; this is a transient progress update.
+                    if (!IsScanning) 
+                        return;
+
                     Status = text;
                 }));
         }

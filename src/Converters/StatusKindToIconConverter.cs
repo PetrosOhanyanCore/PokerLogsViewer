@@ -12,7 +12,6 @@ namespace PokerLogsViewer.Converters
         {
             if (value is not StatusKind sk) return string.Empty;
 
-            // Show a check mark for Done in all languages.
             if (sk == StatusKind.Done)
             {
                 return "\u2714"; // heavy check mark
