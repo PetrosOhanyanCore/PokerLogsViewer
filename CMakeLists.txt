@@ -39,14 +39,26 @@ file(GLOB_RECURSE APP_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_SOURCE_DIR}/*.sln")
 
 # --- Default build target ------------------------------------------------
-add_custom_target(PokerLogsViewer ALL
-    COMMAND ${DOTNET_EXE} build "${SOLUTION_FILE}"
-            -c ${BUILD_CONFIG}
-            -o "${OUTPUT_DIR}"
-            --nologo
-    SOURCES ${APP_SOURCES}
-    COMMENT "Building PokerLogsViewer (.NET 8, ${BUILD_CONFIG})"
-    VERBATIM)
+if(EXISTS "${SOLUTION_FILE}")
+    add_custom_target(PokerLogsViewer ALL
+        COMMAND ${DOTNET_EXE} build "${SOLUTION_FILE}"
+                -c ${BUILD_CONFIG}
+                -o "${OUTPUT_DIR}"
+                --nologo
+        SOURCES ${APP_SOURCES}
+        COMMENT "Building PokerLogsViewer (.NET 8, ${BUILD_CONFIG})"
+        VERBATIM)
+else()
+    # Fall back to building the project directly if no solution file is present.
+    add_custom_target(PokerLogsViewer ALL
+        COMMAND ${DOTNET_EXE} build "${PROJECT_FILE}"
+                -c ${BUILD_CONFIG}
+                -o "${OUTPUT_DIR}"
+                --nologo
+        SOURCES ${APP_SOURCES}
+        COMMENT "Building PokerLogsViewer project (.NET 8, ${BUILD_CONFIG})"
+        VERBATIM)
+endif()
 
 # --- Optional: restore dependencies only ---------------------------------
 add_custom_target(restore
