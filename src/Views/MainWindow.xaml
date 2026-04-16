@@ -31,7 +31,24 @@
         <!-- Status bar -->
         <StatusBar DockPanel.Dock="Bottom">
             <StatusBarItem>
-                <TextBlock Text="{Binding Status}"/>
+                <TextBlock Text="{Binding Status}" FontWeight="SemiBold">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Foreground" Value="Black"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding StatusKind}" Value="Scanning">
+                                    <Setter Property="Foreground" Value="#005FB8"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding StatusKind}" Value="Done">
+                                    <Setter Property="Foreground" Value="#107C10"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding StatusKind}" Value="Error">
+                                    <Setter Property="Foreground" Value="#C50F1F"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
             </StatusBarItem>
         </StatusBar>
 

@@ -16,8 +16,8 @@ namespace PokerLogsViewer.ViewModels
     public sealed class MainViewModel : ViewModelBase
     {
         private readonly IFileScanner _fileScanner;
-        private readonly IJsonParser  _jsonParser;
-        private readonly Dispatcher   _dispatcher;
+        private readonly IJsonParser _jsonParser;
+        private readonly Dispatcher _dispatcher;
 
         private Thread _scanThread;
         // Volatile because it is read/written by both UI and worker threads.
@@ -25,6 +25,7 @@ namespace PokerLogsViewer.ViewModels
 
         private string _folderPath;
         private string _status = "Select a folder and click Start Scanning.";
+        private StatusKind _statusKind = StatusKind.Idle;
         private TableGroupViewModel _selectedTable;
         private PokerHand _selectedHand;
 
@@ -45,6 +46,15 @@ namespace PokerLogsViewer.ViewModels
         {
             get => _status;
             private set => SetProperty(ref _status, value);
+        }
+
+        /// <summary>
+        /// Drives the status-bar text color via DataTriggers in XAML.
+        /// </summary>
+        public StatusKind StatusKind
+        {
+            get => _statusKind;
+            private set => SetProperty(ref _statusKind, value);
         }
 
         public bool IsScanning
@@ -76,16 +86,16 @@ namespace PokerLogsViewer.ViewModels
         }
 
         public ICommand BrowseCommand { get; }
-        public ICommand ScanCommand   { get; }
+        public ICommand ScanCommand { get; }
 
         public MainViewModel(IFileScanner fileScanner, IJsonParser jsonParser)
         {
             _fileScanner = fileScanner ?? throw new ArgumentNullException(nameof(fileScanner));
-            _jsonParser  = jsonParser  ?? throw new ArgumentNullException(nameof(jsonParser));
-            _dispatcher  = Application.Current.Dispatcher;
+            _jsonParser = jsonParser ?? throw new ArgumentNullException(nameof(jsonParser));
+            _dispatcher = Application.Current.Dispatcher;
 
             BrowseCommand = new RelayCommand(_ => Browse(), _ => !IsScanning);
-            ScanCommand   = new RelayCommand(
+            ScanCommand = new RelayCommand(
                 _ => StartScan(),
                 _ => !IsScanning
                      && !string.IsNullOrWhiteSpace(FolderPath)
@@ -116,20 +126,22 @@ namespace PokerLogsViewer.ViewModels
             var path = FolderPath;
             if (string.IsNullOrWhiteSpace(path) || !Directory.Exists(path))
             {
-                Status = "Error: folder does not exist.";
+                Status = "✖ Error: folder does not exist.";
+                StatusKind = StatusKind.Error;
                 return;
             }
 
             // Reset UI state on UI thread before leaving.
             IsScanning = true;
             Status = "Scanning...";
+            StatusKind = StatusKind.Scanning;
             Tables.Clear();
             SelectedTable = null;
-            SelectedHand  = null;
+            SelectedHand = null;
 
             _scanThread = new Thread(() => ScanWorker(path))
             {
-                Name         = "PokerLogsScanThread",
+                Name = "PokerLogsScanThread",
                 IsBackground = true
             };
             _scanThread.Start();
@@ -147,7 +159,7 @@ namespace PokerLogsViewer.ViewModels
         private void ScanWorker(string rootPath)
         {
             int processed = 0;
-            int failed    = 0;
+            int failed = 0;
 
             try
             {
@@ -211,8 +223,9 @@ namespace PokerLogsViewer.ViewModels
                     }
 
                     Status = failed > 0
-                        ? $"Done ({processed} files processed, {failed} skipped)"
-                        : $"Done ({processed} files processed)";
+                        ? $"✔ Done ({processed} files processed, {failed} skipped)"
+                        : $"✔ Done ({processed} files processed)";
+                    StatusKind = StatusKind.Done;
 
                     IsScanning = false;
                 }));
@@ -222,7 +235,8 @@ namespace PokerLogsViewer.ViewModels
                 Debug.WriteLine($"[ScanWorker] fatal: {ex}");
                 _dispatcher.Invoke(new Action(() =>
                 {
-                    Status     = $"Error: {ex.Message}";
+                    Status = $"✖ Error: {ex.Message}";
+                    StatusKind = StatusKind.Error;
                     IsScanning = false;
                 }));
             }
@@ -231,6 +245,9 @@ namespace PokerLogsViewer.ViewModels
         /// <summary>Non-blocking status push from the worker thread.</summary>
         private void PostStatus(string text)
         {
+            // Use Normal priority (same as the terminal Dispatcher.Invoke) so FIFO
+            // order is preserved. With Background priority, a late-arriving
+            // "Scanning..." could fire AFTER "Done" and overwrite it.
             _dispatcher.BeginInvoke(
                 DispatcherPriority.Background,
                 new Action(() => Status = text));
