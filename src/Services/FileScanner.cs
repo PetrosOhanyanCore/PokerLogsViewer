@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -6,6 +7,14 @@ namespace PokerLogsViewer.Services
 {
     public sealed class FileScanner : IFileScanner
     {
+        // Accept both the canonical extension and the common "Notepad on Windows"
+        // artifact where 'foo.json' is saved as 'foo.json.txt'.
+        private static readonly string[] AcceptedExtensions =
+        {
+            ".json",
+            ".json.txt"
+        };
+
         public IEnumerable<string> FindJsonFiles(string rootPath)
         {
             if (string.IsNullOrWhiteSpace(rootPath) || !Directory.Exists(rootPath))
@@ -17,23 +26,51 @@ namespace PokerLogsViewer.Services
 
         private static IEnumerable<string> EnumerateSafe(string path)
         {
-            string[] files = null;
+            string[] allFiles = null;
             string[] dirs = null;
 
-            try { files = Directory.GetFiles(path, "*.json", SearchOption.TopDirectoryOnly); }
-            catch (System.Exception ex) { Debug.WriteLine($"[FileScanner] skip files in {path}: {ex.Message}"); }
+            try
+            {
+                // Enumerate once with a broad pattern, filter by predicate below.
+                // Avoids .NET's legacy 8.3 filename quirk that can make "*.json"
+                // match unexpected names.
+                allFiles = Directory.GetFiles(path, "*", SearchOption.TopDirectoryOnly);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[FileScanner] skip files in {path}: {ex.Message}");
+            }
 
-            if (files != null)
-                foreach (var f in files) yield return f;
+            if (allFiles != null)
+            {
+                foreach (var f in allFiles)
+                {
+                    var name = Path.GetFileName(f);
+                    if (HasAcceptedExtension(name))
+                        yield return f;
+                }
+            }
 
             try { dirs = Directory.GetDirectories(path); }
-            catch (System.Exception ex) { Debug.WriteLine($"[FileScanner] skip subdirs of {path}: {ex.Message}"); }
+            catch (Exception ex) { Debug.WriteLine($"[FileScanner] skip subdirs of {path}: {ex.Message}"); }
 
             if (dirs == null) yield break;
 
             foreach (var d in dirs)
                 foreach (var f in EnumerateSafe(d))
                     yield return f;
+        }
+
+        private static bool HasAcceptedExtension(string fileName)
+        {
+            if (string.IsNullOrEmpty(fileName)) return false;
+
+            for (int i = 0; i < AcceptedExtensions.Length; i++)
+            {
+                if (fileName.EndsWith(AcceptedExtensions[i], StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+            return false;
         }
     }
 }
