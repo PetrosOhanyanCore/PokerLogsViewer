@@ -1,4 +1,5 @@
 using System.Windows;
+using PokerLogsViewer.Services;
 
 namespace PokerLogsViewer.Views
 {
@@ -7,6 +8,16 @@ namespace PokerLogsViewer.Views
         public MainWindow()
         {
             InitializeComponent();
+        }
+
+        private void SetCultureEn(object sender, RoutedEventArgs e)
+        {
+            LocalizationManager.Instance.SetCulture("en");
+        }
+
+        private void SetCultureRu(object sender, RoutedEventArgs e)
+        {
+            LocalizationManager.Instance.SetCulture("ru");
         }
     }
 }

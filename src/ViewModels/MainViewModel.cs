@@ -33,7 +33,7 @@ namespace PokerLogsViewer.ViewModels
         private volatile bool _isScanning;
 
         private string _folderPath;
-        private string _status = "Выберите папку и нажмите «Начать сканирование».";
+        private string _status;
         private StatusKind _statusKind = StatusKind.Idle;
         private TableGroupViewModel _selectedTable;
         private PokerHand _selectedHand;
@@ -84,7 +84,7 @@ namespace PokerLogsViewer.ViewModels
         public string Status
         {
             get => _status;
-            private set => SetProperty(ref _status, value);
+            set => SetProperty(ref _status, value);
         }
 
         /// <summary>
@@ -93,7 +93,7 @@ namespace PokerLogsViewer.ViewModels
         public StatusKind StatusKind
         {
             get => _statusKind;
-            private set => SetProperty(ref _statusKind, value);
+            set => SetProperty(ref _statusKind, value);
         }
 
         public bool IsScanning
@@ -147,6 +147,49 @@ namespace PokerLogsViewer.ViewModels
             _filteredTables.Filter = FilterTable;
 
             RebuildHandsView();
+
+            // Initialize status text from localization
+            // Use keyed status so it updates when language changes
+            SetStatusKey("Status_SelectFolder");
+
+            // Recompute status when localization changes
+            LocalizationManager.Instance.PropertyChanged += (_, __) =>
+            {
+                // Re-evaluate current keyed status on UI thread
+                _dispatcher.BeginInvoke(new Action(() => UpdateStatusFromKey()));
+            };
+        }
+
+        private string _statusKey;
+        private object[] _statusArgs;
+
+        private void SetStatusKey(string key, params object[] args)
+        {
+            _statusKey = key;
+            _statusArgs = args != null && args.Length == 0 ? null : args;
+            UpdateStatusFromKey();
+        }
+
+        private void SetStatusText(string text)
+        {
+            _statusKey = null;
+            _statusArgs = null;
+            Status = text;
+        }
+
+        private void UpdateStatusFromKey()
+        {
+            if (_statusKey == null) return;
+            var fmt = LocalizationManager.Instance[_statusKey];
+            try
+            {
+                Status = _statusArgs != null ? string.Format(fmt, _statusArgs) : fmt;
+            }
+            catch (FormatException)
+            {
+                // Fallback to raw format if localization format is invalid
+                Status = fmt;
+            }
         }
 
         // ---------------------------------------------------------------------
@@ -173,7 +216,7 @@ namespace PokerLogsViewer.ViewModels
             var path = FolderPath;
             if (string.IsNullOrWhiteSpace(path) || !Directory.Exists(path))
             {
-                Status = "✖ Ошибка: Папка не существует.";
+                SetStatusKey("Status_Error_FolderNotExist");
                 StatusKind = StatusKind.Error;
                 return;
             }
@@ -182,7 +225,7 @@ namespace PokerLogsViewer.ViewModels
 
             // Reset UI state on UI thread before leaving.
             IsScanning = true;
-            Status = "Сканирование...";
+            SetStatusKey("Status_Scanning");
             StatusKind = StatusKind.Scanning;
             Tables.Clear();
             SelectedTable = null;
@@ -216,9 +259,10 @@ namespace PokerLogsViewer.ViewModels
                 {
                     ApplyTables(grouped);
 
-                    Status = failed > 0
-                        ? $"✔ Готово ({processed} файлов обработано, {failed} пропущено)"
-                        : $"✔ Готово ({processed} файлов обработано)";
+                    if (failed > 0)
+                        SetStatusKey("Status_Done_ProcessedSkipped", processed, failed);
+                    else
+                        SetStatusKey("Status_Done_Processed", processed);
                     StatusKind = StatusKind.Done;
 
                     IsScanning = false;
@@ -229,7 +273,7 @@ namespace PokerLogsViewer.ViewModels
                 Debug.WriteLine($"[ScanWorker] fatal: {ex}");
                 _dispatcher.Invoke(new Action(() =>
                 {
-                    Status = $"✖ Ошибка: {ex.Message}";
+                    SetStatusKey("Status_Error_Prefix", ex.Message);
                     StatusKind = StatusKind.Error;
                     IsScanning = false;
                 }));
@@ -245,7 +289,7 @@ namespace PokerLogsViewer.ViewModels
             int total = files.Count;
 
             if (reportProgress)
-                PostStatus($"Found {total} file(s). Parsing...");
+                PostStatus(string.Format(LocalizationManager.Instance["Status_FoundFilesParsing"], total));
 
             var grouped = new Dictionary<string, List<PokerHand>>(StringComparer.Ordinal);
 
@@ -283,7 +327,7 @@ namespace PokerLogsViewer.ViewModels
                 }
 
                 if (reportProgress && ((i & 0x1F) == 0))
-                    PostStatus($"Сканирование... {i + 1}/{total}");
+                    PostStatus(string.Format(LocalizationManager.Instance["Status_ScanningProgress"], i + 1, total));
             }
 
             return grouped;
@@ -461,9 +505,10 @@ namespace PokerLogsViewer.ViewModels
                             SelectedHand = SelectedTable.Hands.FirstOrDefault(h => h.HandID == previousHandId.Value);
                     }
 
-                    Status = failed > 0
-                        ? $"✔ Автообновлено ({processed} файлов, {failed} пропущено)"
-                        : $"✔ Автообновлено ({processed} файлов)";
+                    if (failed > 0)
+                        SetStatusKey("Status_AutoRefreshed_ProcessedSkipped", processed, failed);
+                    else
+                        SetStatusKey("Status_AutoRefreshed_Processed", processed);
                     StatusKind = StatusKind.Done;
                 });
             }
@@ -472,7 +517,7 @@ namespace PokerLogsViewer.ViewModels
                 Debug.WriteLine($"[AutoRefresh] fatal: {ex}");
                 _dispatcher.Invoke(() =>
                 {
-                    Status = $"✖ Ошибка автообновления: {ex.Message}";
+                    Status = string.Format(LocalizationManager.Instance["Status_Error_AutoRefreshPrefix"], ex.Message);
                     StatusKind = StatusKind.Error;
                 });
             }
@@ -490,7 +535,23 @@ namespace PokerLogsViewer.ViewModels
                 {
                     // Ignore stale progress updates once scan has ended.
                     if (!IsScanning) return;
+                    // Do not clear the keyed status; this is a transient progress update.
                     Status = text;
+                }));
+        }
+
+        /// <summary>
+        /// Like PostStatus but keeps the status as a localization key so it will
+        /// update automatically when the language changes.
+        /// </summary>
+        private void PostStatusKey(string key, params object[] args)
+        {
+            _dispatcher.BeginInvoke(
+                DispatcherPriority.Normal,
+                new Action(() =>
+                {
+                    if (!IsScanning) return;
+                    SetStatusKey(key, args);
                 }));
         }
 
