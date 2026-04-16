@@ -1,4 +1,4 @@
-<Window x:Class="PokerLogsViewer.Views.MainWindow"
+﻿<Window x:Class="PokerLogsViewer.Views.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:m="clr-namespace:PokerLogsViewer.Models"
@@ -20,9 +20,9 @@
     <DockPanel LastChildFill="True">
         <!-- Top toolbar -->
         <DockPanel DockPanel.Dock="Top" Margin="8">
-            <Button Content="Browse..." Command="{Binding BrowseCommand}"
+            <Button Content="Обзор..." Command="{Binding BrowseCommand}"
                     Width="90" Margin="0,0,8,0"/>
-            <Button Content="Start Scanning" Command="{Binding ScanCommand}"
+            <Button Content="Начать сканирование." Command="{Binding ScanCommand}"
                     Width="130" DockPanel.Dock="Right"/>
             <TextBox Text="{Binding FolderPath, UpdateSourceTrigger=PropertyChanged}"
                      IsReadOnly="True" VerticalContentAlignment="Center"/>
@@ -69,7 +69,7 @@
                     <ListBox ItemsSource="{Binding Tables}"
                              SelectedItem="{Binding SelectedTable}"
                              DisplayMemberPath="TableName"/>
-                    <TextBlock Text="No data. Click 'Start Scanning'.">
+                    <TextBlock Text="No data. Click 'Начать сканирование'.">
                         <TextBlock.Style>
                             <Style TargetType="TextBlock" BasedOn="{StaticResource Placeholder}">
                                 <Setter Property="Visibility" Value="Collapsed"/>
@@ -142,7 +142,10 @@
                                             </ItemsControl.ItemTemplate>
                                         </ItemsControl>
 
-                                        <TextBlock Text="{Binding WinAmount, StringFormat='Win Amount: {0}'}"/>
+                                        <TextBlock>
+                                            <Run Text="Win Amount: " FontWeight="Bold"/>
+                                            <Run Text="{Binding WinAmount}"/>
+                                        </TextBlock>
                                     </StackPanel>
                                 </Border>
                             </DataTemplate>

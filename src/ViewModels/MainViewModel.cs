@@ -24,7 +24,7 @@ namespace PokerLogsViewer.ViewModels
         private volatile bool _isScanning;
 
         private string _folderPath;
-        private string _status = "Select a folder and click Start Scanning.";
+        private string _status = "Выберите папку и нажмите «Начать сканирование».";
         private StatusKind _statusKind = StatusKind.Idle;
         private TableGroupViewModel _selectedTable;
         private PokerHand _selectedHand;
@@ -126,14 +126,14 @@ namespace PokerLogsViewer.ViewModels
             var path = FolderPath;
             if (string.IsNullOrWhiteSpace(path) || !Directory.Exists(path))
             {
-                Status = "✖ Error: folder does not exist.";
+                Status = "✖ Ошибка: Папка не существует.";
                 StatusKind = StatusKind.Error;
                 return;
             }
 
             // Reset UI state on UI thread before leaving.
             IsScanning = true;
-            Status = "Scanning...";
+            Status = "Сканирование...";
             StatusKind = StatusKind.Scanning;
             Tables.Clear();
             SelectedTable = null;
@@ -207,7 +207,7 @@ namespace PokerLogsViewer.ViewModels
 
                     // Throttled progress update — fire-and-forget, does not block worker.
                     if ((i & 0x1F) == 0)
-                        PostStatus($"Scanning... {i + 1}/{total}");
+                        PostStatus($"Сканирование... {i + 1}/{total}");
                 }
 
                 // 3. Hand off to the UI thread in a single batched update.
@@ -223,8 +223,8 @@ namespace PokerLogsViewer.ViewModels
                     }
 
                     Status = failed > 0
-                        ? $"✔ Done ({processed} files processed, {failed} skipped)"
-                        : $"✔ Done ({processed} files processed)";
+                        ? $"✔ Готово ({processed} файлов обработано, {failed} пропущено)"
+                        : $"✔ Готово ({processed} файлов обработано)";
                     StatusKind = StatusKind.Done;
 
                     IsScanning = false;
@@ -235,7 +235,7 @@ namespace PokerLogsViewer.ViewModels
                 Debug.WriteLine($"[ScanWorker] fatal: {ex}");
                 _dispatcher.Invoke(new Action(() =>
                 {
-                    Status = $"✖ Error: {ex.Message}";
+                    Status = $"✖ Ошибка: {ex.Message}";
                     StatusKind = StatusKind.Error;
                     IsScanning = false;
                 }));
@@ -249,8 +249,13 @@ namespace PokerLogsViewer.ViewModels
             // order is preserved. With Background priority, a late-arriving
             // "Scanning..." could fire AFTER "Done" and overwrite it.
             _dispatcher.BeginInvoke(
-                DispatcherPriority.Background,
-                new Action(() => Status = text));
+                DispatcherPriority.Normal,
+                new Action(() =>
+                {
+                    // Ignore stale progress updates once scan has ended.
+                    if (!IsScanning) return;
+                    Status = text;
+                }));
         }
     }
 }
