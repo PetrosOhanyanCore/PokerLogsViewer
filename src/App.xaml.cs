@@ -17,6 +17,7 @@ namespace PokerLogsViewer
             var vm               = new MainViewModel(scanner, parser);
 
             var window = new MainWindow { DataContext = vm };
+            window.Closed += (_, __) => vm.Dispose();
             window.Show();
         }
     }

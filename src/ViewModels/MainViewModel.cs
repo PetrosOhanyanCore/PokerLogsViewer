@@ -13,11 +13,18 @@ using PokerLogsViewer.Services;
 
 namespace PokerLogsViewer.ViewModels
 {
-    public sealed class MainViewModel : ViewModelBase
+    public sealed class MainViewModel : ViewModelBase, IDisposable
     {
         private readonly IFileScanner _fileScanner;
         private readonly IJsonParser _jsonParser;
         private readonly Dispatcher _dispatcher;
+
+        private readonly object _watcherSync = new object();
+        private FileSystemWatcher _watcher;
+        private Timer _autoRefreshTimer;
+        private string _watchedRootPath;
+        private volatile bool _isDisposed;
+        private int _isAutoRefreshRunning;
 
         private Thread _scanThread;
         // Volatile because it is read/written by both UI and worker threads.
@@ -121,7 +128,7 @@ namespace PokerLogsViewer.ViewModels
 
         private void StartScan()
         {
-            if (IsScanning) return;
+            if (IsScanning || _isDisposed) return;
 
             var path = FolderPath;
             if (string.IsNullOrWhiteSpace(path) || !Directory.Exists(path))
@@ -130,6 +137,8 @@ namespace PokerLogsViewer.ViewModels
                 StatusKind = StatusKind.Error;
                 return;
             }
+
+            ConfigureWatcher(path);
 
             // Reset UI state on UI thread before leaving.
             IsScanning = true;
@@ -158,69 +167,14 @@ namespace PokerLogsViewer.ViewModels
         /// </summary>
         private void ScanWorker(string rootPath)
         {
-            int processed = 0;
-            int failed = 0;
-
             try
             {
-                // 1. Enumerate files (pure background work).
-                var files = _fileScanner.FindJsonFiles(rootPath).ToList();
-                int total = files.Count;
-
-                PostStatus($"Found {total} file(s). Parsing...");
-
-                // 2. Parse into a local dictionary (no UI touch).
-                var grouped = new Dictionary<string, List<PokerHand>>(StringComparer.Ordinal);
-
-                for (int i = 0; i < files.Count; i++)
-                {
-                    var file = files[i];
-                    try
-                    {
-                        var hands = _jsonParser.ParseFile(file);
-                        if (hands == null)
-                        {
-                            failed++;
-                            continue;
-                        }
-
-                        foreach (var hand in hands)
-                        {
-                            var key = string.IsNullOrWhiteSpace(hand.TableName)
-                                ? "(Unknown)"
-                                : hand.TableName;
-
-                            if (!grouped.TryGetValue(key, out var list))
-                            {
-                                list = new List<PokerHand>();
-                                grouped[key] = list;
-                            }
-                            list.Add(hand);
-                        }
-                        processed++;
-                    }
-                    catch (Exception ex)
-                    {
-                        Debug.WriteLine($"[ScanWorker] file '{file}': {ex.Message}");
-                        failed++;
-                    }
-
-                    // Throttled progress update — fire-and-forget, does not block worker.
-                    if ((i & 0x1F) == 0)
-                        PostStatus($"Сканирование... {i + 1}/{total}");
-                }
+                var grouped = BuildGroupedHands(rootPath, reportProgress: true, out int processed, out int failed);
 
                 // 3. Hand off to the UI thread in a single batched update.
                 _dispatcher.Invoke(new Action(() =>
                 {
-                    Tables.Clear();
-                    foreach (var kv in grouped.OrderBy(k => k.Key, StringComparer.OrdinalIgnoreCase))
-                    {
-                        var group = new TableGroupViewModel(kv.Key);
-                        foreach (var h in kv.Value.OrderBy(h => h.HandID))
-                            group.Hands.Add(h);
-                        Tables.Add(group);
-                    }
+                    ApplyTables(grouped);
 
                     Status = failed > 0
                         ? $"✔ Готово ({processed} файлов обработано, {failed} пропущено)"
@@ -242,6 +196,213 @@ namespace PokerLogsViewer.ViewModels
             }
         }
 
+        private Dictionary<string, List<PokerHand>> BuildGroupedHands(string rootPath, bool reportProgress, out int processed, out int failed)
+        {
+            processed = 0;
+            failed = 0;
+
+            var files = _fileScanner.FindJsonFiles(rootPath).ToList();
+            int total = files.Count;
+
+            if (reportProgress)
+                PostStatus($"Found {total} file(s). Parsing...");
+
+            var grouped = new Dictionary<string, List<PokerHand>>(StringComparer.Ordinal);
+
+            for (int i = 0; i < files.Count; i++)
+            {
+                var file = files[i];
+                try
+                {
+                    var hands = _jsonParser.ParseFile(file);
+                    if (hands == null)
+                    {
+                        failed++;
+                        continue;
+                    }
+
+                    foreach (var hand in hands)
+                    {
+                        var key = string.IsNullOrWhiteSpace(hand.TableName)
+                            ? "(Unknown)"
+                            : hand.TableName;
+
+                        if (!grouped.TryGetValue(key, out var list))
+                        {
+                            list = new List<PokerHand>();
+                            grouped[key] = list;
+                        }
+                        list.Add(hand);
+                    }
+                    processed++;
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"[BuildGroupedHands] file '{file}': {ex.Message}");
+                    failed++;
+                }
+
+                if (reportProgress && ((i & 0x1F) == 0))
+                    PostStatus($"Сканирование... {i + 1}/{total}");
+            }
+
+            return grouped;
+        }
+
+        private void ApplyTables(Dictionary<string, List<PokerHand>> grouped)
+        {
+            Tables.Clear();
+            foreach (var kv in grouped.OrderBy(k => k.Key, StringComparer.OrdinalIgnoreCase))
+            {
+                var group = new TableGroupViewModel(kv.Key);
+                foreach (var h in kv.Value.OrderBy(h => h.HandID))
+                    group.Hands.Add(h);
+                Tables.Add(group);
+            }
+        }
+
+        // ---------------------------------------------------------------------
+        // Auto-refresh via FileSystemWatcher
+        // ---------------------------------------------------------------------
+
+        private void ConfigureWatcher(string rootPath)
+        {
+            lock (_watcherSync)
+            {
+                DisposeWatcherCore();
+
+                _watchedRootPath = rootPath;
+
+                _watcher = new FileSystemWatcher(rootPath)
+                {
+                    IncludeSubdirectories = true,
+                    NotifyFilter = NotifyFilters.FileName
+                                 | NotifyFilters.LastWrite
+                                 | NotifyFilters.Size
+                                 | NotifyFilters.CreationTime
+                };
+
+                _watcher.Changed += OnWatchedFileChanged;
+                _watcher.Created += OnWatchedFileChanged;
+                _watcher.Deleted += OnWatchedFileChanged;
+                _watcher.Renamed += OnWatchedFileRenamed;
+                _watcher.Error += OnWatcherError;
+                _watcher.EnableRaisingEvents = true;
+
+                _autoRefreshTimer = new Timer(_ => StartAutoRefresh(), null, Timeout.Infinite, Timeout.Infinite);
+            }
+        }
+
+        private void OnWatchedFileChanged(object sender, FileSystemEventArgs e)
+        {
+            if (_isDisposed) return;
+            if (!IsAcceptedLogFile(e.FullPath)) return;
+            ScheduleAutoRefresh();
+        }
+
+        private void OnWatchedFileRenamed(object sender, RenamedEventArgs e)
+        {
+            if (_isDisposed) return;
+            if (!IsAcceptedLogFile(e.FullPath) && !IsAcceptedLogFile(e.OldFullPath)) return;
+            ScheduleAutoRefresh();
+        }
+
+        private void OnWatcherError(object sender, ErrorEventArgs e)
+        {
+            if (_isDisposed) return;
+
+            Debug.WriteLine($"[Watcher] error: {e.GetException()?.Message}");
+            var path = _watchedRootPath;
+            if (string.IsNullOrWhiteSpace(path) || !Directory.Exists(path))
+                return;
+
+            try
+            {
+                ConfigureWatcher(path);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[Watcher] reconfigure failed: {ex.Message}");
+            }
+        }
+
+        private static bool IsAcceptedLogFile(string fullPath)
+        {
+            if (string.IsNullOrWhiteSpace(fullPath)) return false;
+            return fullPath.EndsWith(".json", StringComparison.OrdinalIgnoreCase)
+                || fullPath.EndsWith(".json.txt", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private void ScheduleAutoRefresh()
+        {
+            lock (_watcherSync)
+            {
+                _autoRefreshTimer?.Change(600, Timeout.Infinite);
+            }
+        }
+
+        private void StartAutoRefresh()
+        {
+            if (_isDisposed) return;
+            if (IsScanning) return;
+
+            if (Interlocked.Exchange(ref _isAutoRefreshRunning, 1) == 1)
+                return;
+
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                try
+                {
+                    RunAutoRefresh();
+                }
+                finally
+                {
+                    Interlocked.Exchange(ref _isAutoRefreshRunning, 0);
+                }
+            });
+        }
+
+        private void RunAutoRefresh()
+        {
+            var path = _watchedRootPath;
+            if (string.IsNullOrWhiteSpace(path) || !Directory.Exists(path))
+                return;
+
+            try
+            {
+                var grouped = BuildGroupedHands(path, reportProgress: false, out int processed, out int failed);
+
+                _dispatcher.Invoke(() =>
+                {
+                    var previousTable = SelectedTable?.TableName;
+                    long? previousHandId = SelectedHand?.HandID;
+
+                    ApplyTables(grouped);
+
+                    if (!string.IsNullOrWhiteSpace(previousTable))
+                    {
+                        SelectedTable = Tables.FirstOrDefault(t => string.Equals(t.TableName, previousTable, StringComparison.Ordinal));
+                        if (SelectedTable != null && previousHandId.HasValue)
+                            SelectedHand = SelectedTable.Hands.FirstOrDefault(h => h.HandID == previousHandId.Value);
+                    }
+
+                    Status = failed > 0
+                        ? $"✔ Автообновлено ({processed} файлов, {failed} пропущено)"
+                        : $"✔ Автообновлено ({processed} файлов)";
+                    StatusKind = StatusKind.Done;
+                });
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[AutoRefresh] fatal: {ex}");
+                _dispatcher.Invoke(() =>
+                {
+                    Status = $"✖ Ошибка автообновления: {ex.Message}";
+                    StatusKind = StatusKind.Error;
+                });
+            }
+        }
+
         /// <summary>Non-blocking status push from the worker thread.</summary>
         private void PostStatus(string text)
         {
@@ -256,6 +417,35 @@ namespace PokerLogsViewer.ViewModels
                     if (!IsScanning) return;
                     Status = text;
                 }));
+        }
+
+        public void Dispose()
+        {
+            if (_isDisposed) return;
+            _isDisposed = true;
+
+            lock (_watcherSync)
+            {
+                DisposeWatcherCore();
+            }
+        }
+
+        private void DisposeWatcherCore()
+        {
+            if (_watcher != null)
+            {
+                _watcher.EnableRaisingEvents = false;
+                _watcher.Changed -= OnWatchedFileChanged;
+                _watcher.Created -= OnWatchedFileChanged;
+                _watcher.Deleted -= OnWatchedFileChanged;
+                _watcher.Renamed -= OnWatchedFileRenamed;
+                _watcher.Error -= OnWatcherError;
+                _watcher.Dispose();
+                _watcher = null;
+            }
+
+            _autoRefreshTimer?.Dispose();
+            _autoRefreshTimer = null;
         }
     }
 }
