@@ -45,7 +45,8 @@
         <StatusBar DockPanel.Dock="Bottom">
             <StatusBarItem>
                 <!-- Show icon + localized status; icon uses converter to pick glyph -->
-                <TextBlock FontWeight="SemiBold" FontFamily="Segoe UI Symbol, Segoe UI">
+                <!-- Include emoji/symbol fonts first so check glyphs render correctly -->
+                <TextBlock FontWeight="SemiBold" FontFamily="Segoe UI Emoji, Segoe UI Symbol, Segoe UI">
                     <TextBlock.Style>
                         <Style TargetType="TextBlock">
                             <Setter Property="Foreground" Value="Black"/>

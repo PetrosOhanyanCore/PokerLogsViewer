@@ -12,13 +12,10 @@ namespace PokerLogsViewer.Converters
         {
             if (value is not StatusKind sk) return string.Empty;
 
-            // Show a green check only for Russian UI; English shows no icon for Done.
+            // Show a check mark for Done in all languages.
             if (sk == StatusKind.Done)
             {
-                var cur = LocalizationManager.Instance.CurrentCulture ?? "en";
-                if (cur.StartsWith("ru", StringComparison.OrdinalIgnoreCase))
-                    return "\u2714"; // heavy check mark
-                return string.Empty;
+                return "\u2714"; // heavy check mark
             }
 
             if (sk == StatusKind.Error)
